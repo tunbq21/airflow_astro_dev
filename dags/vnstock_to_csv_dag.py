@@ -18,6 +18,7 @@ default_args = {
     'retry_delay': timedelta(minutes=5),
 }
 
+
 # Danh sách cổ phiếu ví dụ
 TICKERS = ['FPT', 'HPG', 'VCB', 'GAS', 'VNM', 'MSN', 'MWG', 'VPB', 'TCB', 'ACB']
 
