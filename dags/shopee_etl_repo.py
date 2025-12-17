@@ -1,9 +1,9 @@
 import requests
 from interface.etl_interface import ETLInterface
 from datetime import datetime
-# from dags.anonymous_path import Path_Folder
 import sys, os, json, csv
 from psycopg2.extras import execute_values
+
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 class ShopeeETL(ETLInterface):
