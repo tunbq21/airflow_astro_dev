@@ -10,3 +10,5 @@ webserver_config.py
 airflow.cfg
 airflow.db
 include/
+dags/__pycache__/
+dags/data_lake/vnstock_prices_csv/year=*/

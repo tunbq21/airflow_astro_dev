@@ -49,10 +49,24 @@ def Extract_data_to_csv (**kwargs):
             )
 
             if not df.empty:
-                df.reset_index(inplace=True)
+# vnstock trả ngày ở cột 'time'
+                df.rename(columns={'time': 'Date'}, inplace=True)
+
+                # đảm bảo Date đúng kiểu
+                df['Date'] = pd.to_datetime(df['Date']).dt.date
+
                 df['Ticker'] = ticker
                 df['year'] = pd.to_datetime(df['Date']).dt.year
                 df['month'] = pd.to_datetime(df['Date']).dt.month
+
+                df.rename(columns={
+                    'open': 'Open',
+                    'high': 'High',
+                    'low': 'Low',
+                    'close': 'Close',
+                    'volume': 'Volume'
+                }, inplace=True)
+
 
                 output_dir = os.path.join(BASE_DIR, f"year={year}")
                 os.makedirs(output_dir, exist_ok=True)
@@ -66,7 +80,10 @@ def Extract_data_to_csv (**kwargs):
             print(f"Error fetching data for {ticker}: {e}")
     return list_csv_files
 
-def create_table_if_not_exists( **kwargs):
+def create_table_if_not_exists(**kwargs):
+    ti = kwargs['ti']
+    list_files = ti.xcom_pull(task_ids='extract_data_to_csv')
+
     conn = psycopg2.connect(
         dbname=airflow_conn.schema,
         user=airflow_conn.login,
@@ -74,29 +91,30 @@ def create_table_if_not_exists( **kwargs):
         host=airflow_conn.host,
         port=airflow_conn.port
     )
-    ti = kwargs['ti']
-    list_files = ti.xcom_pull(task_ids='extract_data_to_csv')
     cursor = conn.cursor()
-    for file_name in list_files:
-        if file_name.endswith(".csv"):
-            table_name = "vnstock_prices"
-            break
-        create_table_query = f"""
-        CREATE TABLE IF NOT EXISTS {table_name} (
-            Date DATE,
-            Open FLOAT,
-            High FLOAT,
-            Low FLOAT,
-            Close FLOAT,
-            Volume BIGINT,
-            Ticker VARCHAR(10),
-            year INT,
-            month INT,
-            PRIMARY KEY (Date, Ticker)
-        );
-        """
-        cursor.execute(create_table_query)
-        conn.commit()
+
+    for file_path in list_files:
+        file_name = os.path.basename(file_path)
+        file_no_ext = os.path.splitext(file_name)[0]
+
+        ticker = file_no_ext.split("_")[0].lower()
+        table_name = f"vnstock_{ticker}"
+
+        cursor.execute(f"""
+            CREATE TABLE IF NOT EXISTS {table_name} (
+                Date DATE,
+                Open FLOAT,
+                High FLOAT,
+                Low FLOAT,
+                Close FLOAT,
+                Volume BIGINT,
+                year INT,
+                month INT,
+                PRIMARY KEY (Date)
+            );
+        """)
+
+    conn.commit()
     cursor.close()
     conn.close()
 
@@ -107,46 +125,58 @@ def load_csv_to_postgres(**kwargs):
         password=airflow_conn.password,
         host=airflow_conn.host,
         port=airflow_conn.port
-    )    
+    )
     cursor = conn.cursor()
+
     execution_date = kwargs["ds"]
-    year, month, _ = execution_date.split("-")
+    year, _, _ = execution_date.split("-")
 
     ti = kwargs['ti']
     list_files = ti.xcom_pull(task_ids='extract_data_to_csv')
 
-    data_dir = os.path.join(BASE_DIR, f"year={year}")   
-    for file_name in os.listdir(data_dir):
-        if file_name.endswith(".csv") and file_name in list_files:
-            file_path = os.path.join(data_dir, file_name)
-            df = pd.read_csv(file_path)
+    for file_path in list_files:
+        file_name = os.path.basename(file_path)
+        file_no_ext = os.path.splitext(file_name)[0]
 
-            records = df.to_dict(orient='records')
+        ticker = file_no_ext.split("_")[0].lower()
+        table_name = f"vnstock_{ticker}"
 
-            insert_query = sql.SQL(f"""
-                INSERT INTO {file_name} (Date, Open, High, Low, Close, Volume, Ticker, year, month)
-                VALUES %s
-                ON CONFLICT (Date, Ticker) DO NOTHING
-            """)
+        df = pd.read_csv(file_path)
 
-            values = [
-                (
-                    record['Date'],
-                    record['Open'],
-                    record['High'],
-                    record['Low'],
-                    record['Close'],
-                    record['Volume'],
-                    record['Ticker'],
-                    record['year'],
-                    record['month']
-                ) for record in records
-            ]
+        records = df.to_dict(orient='records')
 
-            execute_values.execute_values(
-                cursor, insert_query.as_string(conn), values
+        insert_query = sql.SQL(f"""
+            INSERT INTO {table_name}
+            (Date, Open, High, Low, Close, Volume, year, month)
+            VALUES %s
+            ON CONFLICT (Date) DO NOTHING
+        """)
+
+        values = [
+            (
+                r['Date'],
+                r['Open'],
+                r['High'],
+                r['Low'],
+                r['Close'],
+                r['Volume'],
+                r['year'],
+                r['month']
             )
-            conn.commit()
+            for r in records
+        ]
+
+        execute_values.execute_values(
+            cursor,
+            insert_query.as_string(conn),
+            values
+        )
+
+        conn.commit()
+
+    cursor.close()
+    conn.close()
+
 
 with DAG(
     'vnstock_etl_dag',
