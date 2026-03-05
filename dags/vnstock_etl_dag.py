@@ -49,7 +49,6 @@ def Extract_data_to_csv (**kwargs):
             )
 
             if not df.empty:
-# vnstock trả ngày ở cột 'time'
                 df.rename(columns={'time': 'Date'}, inplace=True)
 
                 df['Date'] = pd.to_datetime(df['Date']).dt.date
