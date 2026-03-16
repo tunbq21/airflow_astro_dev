@@ -58,7 +58,7 @@ def Extract_data_to_csv (**kwargs):
                 df['month'] = pd.to_datetime(df['Date']).dt.month
 
                 df.rename(columns={
-                    'open': 'Open',
+                    'open': 'Open', 
                     'high': 'High',
                     'low': 'Low',
                     'close': 'Close',

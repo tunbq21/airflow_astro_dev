@@ -17,8 +17,6 @@ default_args = {
 BASE_DIR = "/usr/local/airflow/dags/data_lake/weather_hcm"
 
 def extract_weather_data(**kwargs):
-    # Mock weather data for Ho Chi Minh City
-    # In a real scenario, you'd call an API like OpenWeatherMap
     current_time = datetime.now()
     weather_data = {
         'datetime': current_time.strftime('%Y-%m-%d %H:%M:%S'),
